@@ -5,9 +5,6 @@
 #include <ATen/Dispatch.h>
 #include <ATen/Parallel.h>
 #include <ATen/native/cpu/mixed_data_type.h>
-#include <ATen/native/layer_norm.h>
-#include <ATen/native/mps/operations/RMSNorm.h>
-#include <c10/core/GradMode.h>
 #include <c10/util/irange.h>
 #include <ATen/OpMathType.h>
 
@@ -27,6 +24,11 @@
 #include <ATen/ops/rsqrt.h>
 #include <ATen/ops/rms_norm.h>
 #include <ATen/ops/zeros_like_native.h>
+#endif
+
+#ifdef USE_MPS
+#include <ATen/native/mps/operations/RMSNorm.h>
+#include <c10/core/GradMode.h>
 #endif
 
 #include <array>
@@ -296,28 +298,33 @@ Tensor rms_norm_symint(
         input.scalar_type(),
         "rms_norm",
         [&] {
-    scalar_t eps_val;
-    if (!eps.has_value()) {
-      eps_val = std::numeric_limits<at::scalar_value_type<scalar_t>::type>::epsilon();
-    } else {
-      eps_val = eps.value();
-    }
-
     // upcast is needed for fp16 and bf16
     c10::ScalarType opmath_t = toOpMathType(input.scalar_type());
     Tensor upcasted_input = input.to(opmath_t);
 
-    auto rqrst_input = rsqrt(at::pow(upcasted_input, 2).mean(dims_to_reduce_ref, /*keepdim=*/true).add_(eps_val));
-    Tensor result = upcasted_input.mul(rqrst_input).type_as(input);
+    Tensor rqrst_input;
 
-    if (weight_opt.has_value()) {
-      result = result.mul(weight_opt.value());
+    // opmath_t would be one of [Double, Float, ComplexFloat, ComplexDouble]
+    if (opmath_t == at::ScalarType::Float || opmath_t == at::ScalarType::ComplexFloat) {
+      using limits = std::numeric_limits<float>;
+      float eps_val = eps.value_or(limits::epsilon());
+      rqrst_input = rsqrt(at::pow(upcasted_input, 2).mean(dims_to_reduce_ref, /*keepdim=*/true).add_(eps_val));
+    } else {
+      using limits = std::numeric_limits<double>;
+      double eps_val = eps.value_or(limits::epsilon());
+      rqrst_input = rsqrt(at::pow(upcasted_input, 2).mean(dims_to_reduce_ref, /*keepdim=*/true).add_(eps_val));
     }
 
-    return result;
+    Tensor upcasted_result = upcasted_input.mul(rqrst_input);
+
+    if (weight_opt.has_value()) {
+      upcasted_result = upcasted_result.mul(weight_opt.value());
+    }
+
+    return upcasted_result;
   });
 
-  return result;
+  return result.type_as(input);
 
 }
 } // namespace at::native
