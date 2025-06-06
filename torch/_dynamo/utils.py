@@ -2589,6 +2589,7 @@ def set_example_value(node, example_value):
     # occurs, the example_value gets directly updated (so you can't rely on
     # this to accurately reflect what the state of the value was at the time
     # the program was traced).
+    # breakpoint()s
     node.meta["example_value"] = example_value
     shape_env = TracingContext.get().fake_mode.shape_env
     if (
@@ -3245,7 +3246,7 @@ def get_fake_value(node, tx, allow_non_graph_fake=False):
         )
 
     try:
-        with tx.fake_mode, enable_python_dispatcher():
+        with tx.functional_mode, tx.fake_mode, enable_python_dispatcher():
             ret_val = wrap_fake_exception(
                 lambda: run_node(tx.output, node, args, kwargs, nnmodule)
             )
