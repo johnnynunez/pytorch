@@ -1,3 +1,4 @@
+#include <ATen/native/mps/kernels/UpSample.h>
 #include <c10/metal/atomic.h>
 #include <metal_stdlib>
 
