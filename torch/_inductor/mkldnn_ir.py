@@ -23,7 +23,7 @@ from .ir import (
     NoneLayout,
     TensorBox,
 )
-from .utils import convert_shape_to_inductor, pad_listlike
+from .utils import convert_shape_to_inductor, pad_listlike, SUPPORTED_MKLDNN_DEVICES
 from .virtualized import V
 
 
@@ -164,7 +164,7 @@ def _prepare_convolution_fusion_create(
 
     x = cls.require_stride_order(x, req_stride_order)
 
-    # We won't do weight prepack for Conv if dynamic_shapes.
+    # We won't do weight prepack for Conv if dynamic_shapes or if is xpu.
     # In static shape cases, since weight is prepacked, we'll always force output to be channels last in the Conv kernel.
     # In dynamic shape cases, for input with channels = 1, like tensor of size (s0, 1, 28, 28) and stride (784, 784, 28, 1),
     # x = cls.require_stride_order(x, req_stride_order) where req_stride_order is in the channels last order
@@ -172,13 +172,15 @@ def _prepare_convolution_fusion_create(
     # this tensor is considered as channels first and the output will be in contiguous format.
     # To align the behavior of the Conv kernel, we set the output_stride in such case to be contiguous instead of channels last.
     dynamic_shapes = not all(isinstance(i, int) for i in (output_size))
-    if dynamic_shapes and is_contiguous_storage_and_layout(x):
+    if (
+        dynamic_shapes or get_device_type(x) == "xpu"
+    ) and is_contiguous_storage_and_layout(x):
         output_stride = FlexibleLayout.contiguous_strides(output_size)
     else:
         output_stride = make_channels_last_strides_for(output_size)
 
     assert get_device_type(x) == get_device_type(weight)
-    assert get_device_type(x) in ["cpu", "xpu"]
+    assert get_device_type(x) in SUPPORTED_MKLDNN_DEVICES
     inputs = [x]
 
     if quantize_args is not None:
@@ -242,7 +244,7 @@ def _prepare_linear_fusion_create(
 
     x = cls.require_stride_order(x, req_stride_order)
     assert get_device_type(x) == get_device_type(weight)
-    assert get_device_type(x) in ["cpu", "xpu"]
+    assert get_device_type(x) in SUPPORTED_MKLDNN_DEVICES
     inputs = [x]
 
     if quantize_args is not None:
