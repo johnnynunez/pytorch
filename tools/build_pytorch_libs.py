@@ -104,8 +104,10 @@ def build_pytorch(
                 pre_build_command,
                 shell=True,
                 stderr=subprocess.STDOUT,
-                universal_newlines=True,
+                text=True,
             )
+            print("Command output:")
+            print(output)
         except subprocess.CalledProcessError as e:
             print("Command failed with return code:", e.returncode)
             print("Output (stdout and stderr):")

@@ -1432,8 +1432,6 @@ if(USE_ROCM)
         FLASH_NAMESPACE=pytorch_flash
         UNFUSE_FMA                      # Addressing issue #121558
       )
-    target_link_libraries(torch_hip PRIVATE flash_attention)
-    install(TARGETS flash_attention EXPORT Caffe2Targets DESTINATION lib)
   endif()
   if(USE_MEM_EFF_ATTENTION)
     target_compile_definitions(torch_hip PRIVATE USE_MEM_EFF_ATTENTION)
