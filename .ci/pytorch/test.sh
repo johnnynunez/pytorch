@@ -328,6 +328,13 @@ test_h100_distributed() {
   assert_git_not_dirty
 }
 
+test_cutlass_backend() {
+  # cutlass backend tests for H100
+  git clone -b v3.9.2 https://github.com/NVIDIA/cutlass.git
+  CUTLASS_DIR=$(realpath ./cutlass)
+  TORCHINDUCTOR_CUTLASS_DIR="$CUTLASS_DIR" python test/run_test.py --include inductor/test_cutlass_backend -k 'test_max_autotune_cutlass_backend_regular_mm and not test_max_autotune_cutlass_backend_regular_mm_streamk' $PYTHON_TEST_EXTRA_OPTION --upload-artifacts-while-running
+}
+
 test_lazy_tensor_meta_reference_disabled() {
   export TORCH_DISABLE_FUNCTIONALIZATION_META_REFERENCE=1
   echo "Testing lazy tensor operations without meta reference"
@@ -1731,6 +1738,8 @@ elif [[ "${TEST_CONFIG}" == smoke ]]; then
   test_python_smoke
 elif [[ "${TEST_CONFIG}" == h100_distributed ]]; then
   test_h100_distributed
+elif [[ "${TEST_CONFIG}" == cutlass_backend ]]; then
+  test_cutlass_backend
 else
   install_torchvision
   install_monkeytype
