@@ -465,7 +465,7 @@ def error_analysis(
         match_record.found_ranks.clear()
     elif (
         len(match_record.candidate_ranks) == 1
-        and dumps_ranks == match_record.expected_ranks
+        and match_record.expected_ranks.issubset(dumps_ranks)
     ):
         # case two: alltoall or alltoall_base case.
         if match_record.has_undecided_case:
