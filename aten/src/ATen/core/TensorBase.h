@@ -124,7 +124,7 @@ class TORCH_API TensorBase {
   }
 
   TensorBase contiguous(MemoryFormat memory_format=MemoryFormat::Contiguous) const {
-    if (is_contiguous(memory_format)) {
+    if (is_contiguous_or_false(memory_format)) {
       return *this;
     } else {
       return __dispatch_contiguous(memory_format);
@@ -263,6 +263,14 @@ class TORCH_API TensorBase {
 
   bool is_contiguous(at::MemoryFormat memory_format=at::MemoryFormat::Contiguous) const {
     return impl_->is_contiguous(memory_format);
+  }
+
+  // Note [is_contiguous_or_false]
+  // Like is_contiguous, but more dynamic shape-friendly. Returns uncertain
+  // false instead of throwing data-dependent errors for tensors with unbacked
+  // sizes or strides that can be either contiguous or not.
+  bool is_contiguous_or_false(at::MemoryFormat memory_format=at::MemoryFormat::Contiguous) const {
+    return impl_->is_contiguous_or_false(memory_format);
   }
 
   bool is_non_overlapping_and_dense() const {

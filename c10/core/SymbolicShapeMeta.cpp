@@ -22,6 +22,7 @@ SymbolicShapeMeta::SymbolicShapeMeta(const SymbolicShapeMeta& other)
   is_channels_last_ = other.is_channels_last_;
   is_channels_last_3d_ = other.is_channels_last_3d_;
   is_non_overlapping_and_dense_ = other.is_non_overlapping_and_dense_;
+
   available_.store(other.available_.load());
   // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
 }
@@ -79,18 +80,28 @@ SymBool SymbolicShapeMeta::compute_contiguous() const {
   }
   c10::SymIntArrayRef sizes(sizes_);
   c10::SymIntArrayRef strides(strides_);
-  return _compute_contiguous(sizes, strides, numel());
+  // In the case that sizes and strides are hinted, we could store the result,
+  // but we do not want to do that, in order not to specialize when
+  // backed_size_oblivious is on.
+  auto def_contig = _compute_contiguous_or_false(sizes, strides, numel());
+  if (def_contig) {
+    return true;
+  }
+
+  // Otherwise, store the symbolic expression for contiguity, allowing users to
+  // guard on it and handle data-dependent errors
+  return _compute_contiguous_sym(sizes, strides, numel());
 }
 
 // The rest of them
-#define DEFINE_EAGER_SYMBOOL_COMPUTE(name, nodeimpl, fallback) \
-  SymBool SymbolicShapeMeta::name() const {                    \
-    if (!strides_valid_) {                                     \
-      return false;                                            \
-    }                                                          \
-    c10::SymIntArrayRef sizes(sizes_);                         \
-    c10::SymIntArrayRef strides(strides_);                     \
-    return fallback(sizes, strides);                           \
+#define DEFINE_EAGER_SYMBOOL_COMPUTE(name, fallback) \
+  SymBool SymbolicShapeMeta::name() const {          \
+    if (!strides_valid_) {                           \
+      return false;                                  \
+    }                                                \
+    c10::SymIntArrayRef sizes(sizes_);               \
+    c10::SymIntArrayRef strides(strides_);           \
+    return fallback(sizes, strides);                 \
   }
 
 #define DEFINE_SYMBOOL_COMPUTE(name, nodeimpl, fallback)        \
@@ -110,11 +121,13 @@ SymBool SymbolicShapeMeta::compute_contiguous() const {
   }
 
 // clang-format off
-DEFINE_EAGER_SYMBOOL_COMPUTE(compute_channels_last_contiguous_2d, is_channels_last_contiguous_2d, _compute_channels_last_contiguous_2d)
-DEFINE_EAGER_SYMBOOL_COMPUTE(compute_channels_last_contiguous_3d, is_channels_last_contiguous_3d, _compute_channels_last_contiguous_3d)
-DEFINE_EAGER_SYMBOOL_COMPUTE(compute_strides_like_channels_last_2d, is_channels_last_strides_2d, is_channels_last_strides_2d)
-DEFINE_EAGER_SYMBOOL_COMPUTE(compute_strides_like_channels_last_3d, is_channels_last_strides_3d, is_channels_last_strides_3d)
+DEFINE_EAGER_SYMBOOL_COMPUTE(compute_channels_last_contiguous_2d, _compute_channels_last_contiguous_2d)
+DEFINE_EAGER_SYMBOOL_COMPUTE(compute_channels_last_contiguous_3d, _compute_channels_last_contiguous_3d)
+DEFINE_EAGER_SYMBOOL_COMPUTE(compute_strides_like_channels_last_2d, is_channels_last_strides_2d)
+DEFINE_EAGER_SYMBOOL_COMPUTE(compute_strides_like_channels_last_3d, is_channels_last_strides_3d)
+
 DEFINE_SYMBOOL_COMPUTE(compute_non_overlapping_and_dense, is_non_overlapping_and_dense, _compute_non_overlapping_and_dense)
+
 // clang-format on
 
 #undef DEFINE_SYMBOOL_COMPUTE
@@ -192,6 +205,7 @@ void SymbolicShapeMeta::set_numel(SymInt val) const {
   numel_ = std::move(val);
   available_.fetch_or(numel_avail);
 }
+
 void SymbolicShapeMeta::set_is_contiguous(SymBool val) const {
   std::scoped_lock lock(mutables_);
   if (has_is_contiguous()) {
@@ -200,6 +214,7 @@ void SymbolicShapeMeta::set_is_contiguous(SymBool val) const {
   is_contiguous_ = std::move(val);
   available_.fetch_or(is_contiguous_avail);
 }
+
 void SymbolicShapeMeta::set_is_channels_last_contiguous(SymBool val) const {
   std::scoped_lock lock(mutables_);
   if (has_is_channels_last_contiguous()) {
@@ -208,6 +223,7 @@ void SymbolicShapeMeta::set_is_channels_last_contiguous(SymBool val) const {
   is_channels_last_contiguous_ = std::move(val);
   available_.fetch_or(is_channels_last_contiguous_avail);
 }
+
 void SymbolicShapeMeta::set_is_channels_last_3d_contiguous(SymBool val) const {
   std::scoped_lock lock(mutables_);
   if (has_is_channels_last_3d_contiguous()) {
@@ -216,6 +232,7 @@ void SymbolicShapeMeta::set_is_channels_last_3d_contiguous(SymBool val) const {
   is_channels_last_3d_contiguous_ = std::move(val);
   available_.fetch_or(is_channels_last_3d_contiguous_avail);
 }
+
 void SymbolicShapeMeta::set_is_channels_last(SymBool val) const {
   std::scoped_lock lock(mutables_);
   if (has_is_channels_last()) {
@@ -224,6 +241,7 @@ void SymbolicShapeMeta::set_is_channels_last(SymBool val) const {
   is_channels_last_ = std::move(val);
   available_.fetch_or(is_channels_last_avail);
 }
+
 void SymbolicShapeMeta::set_is_channels_last_3d(SymBool val) const {
   std::scoped_lock lock(mutables_);
   if (has_is_channels_last_3d()) {
